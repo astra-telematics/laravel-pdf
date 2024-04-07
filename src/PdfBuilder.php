@@ -257,10 +257,17 @@ class PdfBuilder implements Responsable
 
     protected function saveOnDisk(string $diskName, string $path): self
     {
-        $pdfContent = $this->getBrowsershot()->pdf();
-        $visibility = $this->visibility;
+        if ($this->onLambda)
+        {
+            $this->getBrowsershotLambda()->saveToS3($path, $diskName);
+        }
+        else
+        {
+            $pdfContent = $this->getBrowsershot()->pdf();
+            $visibility = $this->visibility;
 
-        Storage::disk($diskName)->put($path, $pdfContent, $visibility);
+            Storage::disk($diskName)->put($path, $pdfContent, $visibility);
+        }
 
         return $this;
     }
@@ -311,6 +318,65 @@ class PdfBuilder implements Responsable
             $this->getHtml(),
             $this->getFooterHtml(),
         ]);
+    }
+
+    protected function getBrowsershotLambda(): ?BrowsershotLambda
+    {
+        if (!$this->onLambda) return null;
+
+        $browsershotClass = $this->onLambda
+            ? BrowsershotLambda::class
+            : Browsershot::class;
+
+        $browsershot = $browsershotClass::html($this->getHtml());
+
+        $browsershot->showBackground();
+
+        $headerHtml = $this->getHeaderHtml();
+
+        $footerHtml = $this->getFooterHtml();
+
+        if ($headerHtml || $footerHtml) {
+            $browsershot->showBrowserHeaderAndFooter();
+
+            if (! $headerHtml) {
+                $browsershot->hideHeader();
+            }
+
+            if (! $footerHtml) {
+                $browsershot->hideFooter();
+            }
+
+            if ($headerHtml) {
+                $browsershot->headerHtml($headerHtml);
+            }
+
+            if ($footerHtml) {
+                $browsershot->footerHtml($footerHtml);
+            }
+        }
+
+        if ($this->margins) {
+            $browsershot->margins(...$this->margins);
+        }
+
+        if ($this->format) {
+            $browsershot->format($this->format);
+        }
+
+        if ($this->paperSize) {
+            $browsershot->paperSize(...$this->paperSize);
+        }
+
+        if ($this->orientation === Orientation::Landscape->value) {
+            $browsershot->landscape();
+        }
+
+        if ($this->customizeBrowsershot) {
+            ($this->customizeBrowsershot)($browsershot);
+        }
+
+        return $browsershot;
     }
 
     protected function getBrowsershot(): Browsershot
